@@ -1,8 +1,15 @@
 # My Tamil Cinema — Stremio addon
 
-This addon provides an **All-time Tamil Movies** discovery catalog using TMDB, plus one legal demo video, Big Buck Bunny.
+This addon provides Tamil-language movie discovery through TMDB metadata. Version 1.3.0 includes these browse catalogs:
 
-It supports Stremio BitTorrent stream objects for torrents that you own or are explicitly authorized to distribute. It does not search for, scrape, or supply unauthorized copyrighted movie torrents.
+- All Tamil Movies
+- Popular Tamil Movies
+- New Tamil Movies
+- Top Rated Tamil Movies
+- Classic Tamil Movies (released through 2000)
+- Search within the Tamil movie catalogs
+
+The catalog is paginated and uses TMDB's Tamil original-language filter. Search results are also filtered to Tamil-original movies. TMDB provides movie metadata and posters, not playback streams.
 
 ## Enable the Tamil catalog
 
@@ -11,7 +18,7 @@ It supports Stremio BitTorrent stream objects for torrents that you own or are e
 3. Go to **Environment** and add `TMDB_API_KEY` with your TMDB API v3 key.
 4. Save and let Render redeploy.
 
-## Configure authorized torrent playback
+## Configure authorized playback
 
 In Render → service → **Environment**, add:
 
@@ -30,34 +37,23 @@ Example (replace the sample hash with a real 40-character SHA-1 info hash for a 
 }
 ```
 
-The key must exactly match the movie ID used by this addon (for TMDB items, `tmdb:<TMDB movie ID>`). `fileIdx` is optional; without it, Stremio selects the largest file in the torrent. Only valid 40-character hexadecimal info hashes are accepted.
+The key must exactly match the movie ID used by this addon (for TMDB items, `tmdb:<TMDB movie ID>`). `fileIdx` is optional. Only valid 40-character hexadecimal info hashes are accepted.
 
 Optional tracker list:
 
 - Key: `TORRENT_TRACKERS`
-- Value: comma-separated HTTP or UDP tracker URLs for the authorized torrents you configure.
+- Value: comma-separated HTTP or UDP tracker URLs for authorized torrents you configure.
 
-The addon passes these as additional peer-discovery sources to Stremio. Trackers can help discover peers, but they cannot create seeders, repair an unavailable torrent, or guarantee playback/no buffering. Peer availability, client/network support, and upload speed determine whether a torrent plays smoothly. Do not use DHT/tracker discovery where a private tracker prohibits it.
+Trackers can help discover peers, but they cannot create seeders, repair an unavailable torrent, or guarantee playback/no buffering. Only configure torrents and streams you own or are explicitly authorized to distribute.
 
-After saving environment variables, wait for Render to redeploy, then refresh/reinstall the manifest in Stremio:
-`https://YOUR-SERVICE.onrender.com/manifest.json`
+## Install in Stremio
 
-## Run locally
+After Render has deployed the latest GitHub commit, install or refresh this HTTPS manifest URL in Stremio:
 
-Requires Node.js 18+.
-
-```bash
-npm install
-TMDB_API_KEY=your_key npm start
-```
-
-## Deploy on Render
-
-The included `render.yaml` defines the web service. Connect this repository to Render as a Blueprint. After deployment, install the HTTPS manifest URL in Stremio.
+`https://my-tamil-cinema-addon.onrender.com/manifest.json`
 
 ## Notes
 
 - TMDB supplies metadata and images, not video streams.
-- Only add torrents and streams you own or are explicitly authorized to distribute.
-- A magnet/info hash alone does not guarantee that any peers are online or that a video can stream without buffering.
-- This addon does not host/cache torrent data. For reliable playback of older authorized films, use a properly licensed origin or your own authorized media server/CDN.
+- A movie appearing in the catalog does not mean a playable stream is available.
+- This addon does not host/cache video data. Reliable playback needs a licensed stream or authorized media source.
