@@ -41,7 +41,7 @@ function loadAuthorizedTorrents() {
     }
     const valid = {};
     for (const [id, item] of Object.entries(parsed)) {
-      if (!/^(tmdb:\\d+|tt\\d+)$/.test(id) || !item || typeof item !== "object") continue;
+      if (!/^(tmdb:\d+|tt\d+)$/.test(id) || !item || typeof item !== "object") continue;
       const infoHash = String(item.infoHash || "").replace(/^urn:btih:/i, "");
       if (!/^[a-fA-F0-9]{40}$/.test(infoHash)) continue;
       const entry = { infoHash: infoHash.toLowerCase() };
@@ -60,7 +60,7 @@ const authorizedTorrents = loadAuthorizedTorrents();
 const torrentTrackers = (process.env.TORRENT_TRACKERS || "")
   .split(",")
   .map((value) => value.trim())
-  .filter((value) => /^https?:\\/\\//i.test(value) || /^udp:\\/\\//i.test(value))
+  .filter((value) => /^https?:\/\//i.test(value) || /^udp:\/\//i.test(value))
   .map((value) => `tracker:${value}`);
 
 async function tmdb(path, params = {}) {
@@ -137,7 +137,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 builder.defineMetaHandler(async ({ type, id }) => {
   if (type !== "movie") return { meta: null };
   if (id === demoMovie.id) return { meta: demoMovie };
-  const match = /^tmdb:(\\d+)$/.exec(id || "");
+  const match = /^tmdb:(\d+)$/.exec(id || "");
   if (!match) return { meta: null };
 
   try {
