@@ -2,14 +2,18 @@ const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
   id: "org.mytamilcinema.catalog",
-  version: "1.2.0",
+  version: "1.3.0",
   name: "My Tamil Cinema",
-  description: "All-time Tamil movie discovery catalog with playback for separately authorized sources.",
+  description: "Browse and search Tamil-language movies across years, with playback only for separately authorized sources.",
   resources: ["catalog", "meta", "stream"],
   types: ["movie"],
   idPrefixes: ["tmdb:", "tt"],
   catalogs: [
-    { type: "movie", id: "all_tamil_movies", name: "All-time Tamil Movies" },
+    { type: "movie", id: "all_tamil_movies", name: "All Tamil Movies", extra: [{ name: "search", isRequired: false }] },
+    { type: "movie", id: "popular_tamil_movies", name: "Popular Tamil Movies", extra: [{ name: "search", isRequired: false }] },
+    { type: "movie", id: "new_tamil_movies", name: "New Tamil Movies", extra: [{ name: "search", isRequired: false }] },
+    { type: "movie", id: "top_rated_tamil_movies", name: "Top Rated Tamil Movies", extra: [{ name: "search", isRequired: false }] },
+    { type: "movie", id: "classic_tamil_movies", name: "Classic Tamil Movies", extra: [{ name: "search", isRequired: false }] },
     { type: "movie", id: "legal_demo", name: "Legal Demo Movies" }
   ]
 };
@@ -27,7 +31,7 @@ const demoMovie = {
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 
 // Optional JSON object keyed by Stremio movie ID. Add only torrents you own
-// or are explicitly authorized to distribute. Example is documented in README.
+// or are explicitly authorized to distribute.
 function loadAuthorizedTorrents() {
   if (!process.env.AUTHORIZED_TORRENTS_JSON) return {};
   try {
@@ -37,7 +41,7 @@ function loadAuthorizedTorrents() {
     }
     const valid = {};
     for (const [id, item] of Object.entries(parsed)) {
-      if (!/^(tmdb:\d+|tt\d+)$/.test(id) || !item || typeof item !== "object") continue;
+      if (!/^(tmdb:\\d+|tt\\d+)$/.test(id) || !item || typeof item !== "object") continue;
       const infoHash = String(item.infoHash || "").replace(/^urn:btih:/i, "");
       if (!/^[a-fA-F0-9]{40}$/.test(infoHash)) continue;
       const entry = { infoHash: infoHash.toLowerCase() };
@@ -56,7 +60,7 @@ const authorizedTorrents = loadAuthorizedTorrents();
 const torrentTrackers = (process.env.TORRENT_TRACKERS || "")
   .split(",")
   .map((value) => value.trim())
-  .filter((value) => /^https?:\/\//i.test(value) || /^udp:\/\//i.test(value))
+  .filter((value) => /^https?:\\/\\//i.test(value) || /^udp:\\/\\//i.test(value))
   .map((value) => `tracker:${value}`);
 
 async function tmdb(path, params = {}) {
@@ -64,7 +68,7 @@ async function tmdb(path, params = {}) {
   const url = new URL(`https://api.themoviedb.org/3${path}`);
   url.searchParams.set("api_key", TMDB_API_KEY);
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
   const response = await fetch(url);
   if (!response.ok) throw new Error(`TMDB API returned HTTP ${response.status}`);
@@ -85,23 +89,44 @@ function toMeta(movie) {
   };
 }
 
+const catalogSettings = {
+  all_tamil_movies: { sort_by: "popularity.desc" },
+  popular_tamil_movies: { sort_by: "popularity.desc" },
+  new_tamil_movies: { sort_by: "primary_release_date.desc", "primary_release_date.lte": "2099-12-31" },
+  top_rated_tamil_movies: { sort_by: "vote_average.desc", "vote_count.gte": 20 },
+  classic_tamil_movies: { sort_by: "popularity.desc", "primary_release_date.lte": "2000-12-31" }
+};
+
 const builder = new addonBuilder(manifest);
 
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
   if (type !== "movie") return { metas: [] };
   if (id === "legal_demo") return { metas: [demoMovie] };
-  if (id !== "all_tamil_movies") return { metas: [] };
+  const settings = catalogSettings[id];
+  if (!settings) return { metas: [] };
 
   try {
     const skip = Math.max(0, Number(extra?.skip || 0));
     const page = Math.floor(skip / 20) + 1;
-    const data = await tmdb("/discover/movie", {
-      with_original_language: "ta",
-      include_adult: false,
-      sort_by: "popularity.desc",
-      language: "ta-IN",
-      page
-    });
+    const search = String(extra?.search || "").trim();
+    let data;
+    if (search) {
+      data = await tmdb("/search/movie", {
+        query: search,
+        include_adult: false,
+        language: "ta-IN",
+        page
+      });
+      data.results = (data.results || []).filter((movie) => movie.original_language === "ta");
+    } else {
+      data = await tmdb("/discover/movie", {
+        with_original_language: "ta",
+        include_adult: false,
+        language: "ta-IN",
+        page,
+        ...settings
+      });
+    }
     return { metas: (data.results || []).map(toMeta) };
   } catch (error) {
     console.error("Tamil catalog error:", error.message);
@@ -112,7 +137,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 builder.defineMetaHandler(async ({ type, id }) => {
   if (type !== "movie") return { meta: null };
   if (id === demoMovie.id) return { meta: demoMovie };
-  const match = /^tmdb:(\d+)$/.exec(id || "");
+  const match = /^tmdb:(\\d+)$/.exec(id || "");
   if (!match) return { meta: null };
 
   try {
@@ -126,7 +151,6 @@ builder.defineMetaHandler(async ({ type, id }) => {
 
 builder.defineStreamHandler(async ({ type, id }) => {
   if (type !== "movie") return { streams: [] };
-
   if (id === demoMovie.id) {
     return {
       streams: [{
@@ -139,7 +163,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
   const torrent = authorizedTorrents[id];
   if (!torrent) return { streams: [] };
-
   return {
     streams: [{
       name: "Authorized torrent",
