@@ -1,0 +1,9 @@
+{
+  "name": "my-tamil-cinema-addon",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A legal Stremio addon starter",
+  "main": "addon.js",
+  "scripts": { "start": "node addon.js" },
+  "dependencies": { "stremio-addon-sdk": "^1.6.10" }
+}
