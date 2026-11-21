@@ -2,9 +2,9 @@ const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
   id: "org.mytamilcinema.catalog",
-  version: "1.1.0",
+  version: "1.2.0",
   name: "My Tamil Cinema",
-  description: "All-time Tamil movie discovery catalog with posters and details. Playback is provided only for separately authorized streams.",
+  description: "All-time Tamil movie discovery catalog with playback for separately authorized sources.",
   resources: ["catalog", "meta", "stream"],
   types: ["movie"],
   idPrefixes: ["tmdb:", "tt"],
@@ -25,6 +25,39 @@ const demoMovie = {
 };
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
+
+// Optional JSON object keyed by Stremio movie ID. Add only torrents you own
+// or are explicitly authorized to distribute. Example is documented in README.
+function loadAuthorizedTorrents() {
+  if (!process.env.AUTHORIZED_TORRENTS_JSON) return {};
+  try {
+    const parsed = JSON.parse(process.env.AUTHORIZED_TORRENTS_JSON);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Expected a JSON object");
+    }
+    const valid = {};
+    for (const [id, item] of Object.entries(parsed)) {
+      if (!/^(tmdb:\\d+|tt\\d+)$/.test(id) || !item || typeof item !== "object") continue;
+      const infoHash = String(item.infoHash || "").replace(/^urn:btih:/i, "");
+      if (!/^[a-fA-F0-9]{40}$/.test(infoHash)) continue;
+      const entry = { infoHash: infoHash.toLowerCase() };
+      if (Number.isInteger(item.fileIdx) && item.fileIdx >= 0) entry.fileIdx = item.fileIdx;
+      if (typeof item.title === "string" && item.title.trim()) entry.title = item.title.trim().slice(0, 100);
+      valid[id] = entry;
+    }
+    return valid;
+  } catch (error) {
+    console.error("AUTHORIZED_TORRENTS_JSON is invalid:", error.message);
+    return {};
+  }
+}
+
+const authorizedTorrents = loadAuthorizedTorrents();
+const torrentTrackers = (process.env.TORRENT_TRACKERS || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter((value) => /^https?:\\/\\//i.test(value) || /^udp:\\/\\//i.test(value))
+  .map((value) => `tracker:${value}`);
 
 async function tmdb(path, params = {}) {
   if (!TMDB_API_KEY) throw new Error("TMDB_API_KEY is not configured");
@@ -56,7 +89,6 @@ const builder = new addonBuilder(manifest);
 
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
   if (type !== "movie") return { metas: [] };
-
   if (id === "legal_demo") return { metas: [demoMovie] };
   if (id !== "all_tamil_movies") return { metas: [] };
 
@@ -80,8 +112,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 builder.defineMetaHandler(async ({ type, id }) => {
   if (type !== "movie") return { meta: null };
   if (id === demoMovie.id) return { meta: demoMovie };
-
-  const match = /^tmdb:(\d+)$/.exec(id || "");
+  const match = /^tmdb:(\\d+)$/.exec(id || "");
   if (!match) return { meta: null };
 
   try {
@@ -94,12 +125,28 @@ builder.defineMetaHandler(async ({ type, id }) => {
 });
 
 builder.defineStreamHandler(async ({ type, id }) => {
-  if (type !== "movie" || id !== demoMovie.id) return { streams: [] };
+  if (type !== "movie") return { streams: [] };
+
+  if (id === demoMovie.id) {
+    return {
+      streams: [{
+        title: "Open demo video",
+        url: "https://distribution.bbb3d.renderfarming.net/video/mp4/bbb_sunflower_1080p_30fps_normal.mp4",
+        behaviorHints: { notWebReady: false }
+      }]
+    };
+  }
+
+  const torrent = authorizedTorrents[id];
+  if (!torrent) return { streams: [] };
+
   return {
     streams: [{
-      title: "Open demo video",
-      url: "https://distribution.bbb3d.renderfarming.net/video/mp4/bbb_sunflower_1080p_30fps_normal.mp4",
-      behaviorHints: { notWebReady: false }
+      name: "Authorized torrent",
+      title: torrent.title || "Authorized torrent • peer discovery",
+      infoHash: torrent.infoHash,
+      ...(torrent.fileIdx !== undefined ? { fileIdx: torrent.fileIdx } : {}),
+      ...(torrentTrackers.length ? { sources: torrentTrackers } : {})
     }]
   };
 });
@@ -107,4 +154,5 @@ builder.defineStreamHandler(async ({ type, id }) => {
 const port = Number(process.env.PORT || 7000);
 serveHTTP(builder.getInterface(), { port });
 console.log(`My Tamil Cinema addon listening on port ${port}`);
+console.log(`Loaded ${Object.keys(authorizedTorrents).length} authorized torrent mapping(s).`);
 if (!TMDB_API_KEY) console.warn("Set TMDB_API_KEY in Render Environment to enable the Tamil movie catalog.");
